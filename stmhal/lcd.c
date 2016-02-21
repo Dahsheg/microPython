@@ -86,6 +86,232 @@
 #define LCD_PIX_BUF_H (32)
 #define LCD_PIX_BUF_BYTE_SIZE (LCD_PIX_BUF_W * LCD_PIX_BUF_H / 8)
 
+#ifdef STM32F7DISC
+#include "boards/STM32F7DISC/stm32746g_discovery_lcd.h"
+
+typedef struct _pyb_lcd_obj_t {
+    mp_obj_base_t base;
+
+    // hardware control for the LCD
+    SPI_HandleTypeDef *spi;
+    const pin_obj_t *pin_cs1;
+    const pin_obj_t *pin_rst;
+    const pin_obj_t *pin_a0;
+    const pin_obj_t *pin_bl;
+
+    // character buffer for stdout-like output
+    char char_buffer[LCD_CHAR_BUF_W * LCD_CHAR_BUF_H];
+    int line;
+    int column;
+    int next_line;
+
+    // double buffering for pixel buffer
+    byte pix_buf[LCD_PIX_BUF_BYTE_SIZE];
+    byte pix_buf2[LCD_PIX_BUF_BYTE_SIZE];
+} pyb_lcd_obj_t;
+
+//STATIC void lcd_delay(void) {
+    //__asm volatile ("nop\nnop");
+//}
+
+//STATIC void lcd_out(pyb_lcd_obj_t *lcd, int instr_data, uint8_t i) {
+//}
+
+// write a string to the LCD at the current cursor location
+// output it straight away (doesn't use the pixel buffer)
+
+STATIC void lcd_write_strn(pyb_lcd_obj_t *lcd, const char *str, unsigned int len) {	
+	BSP_LCD_DisplayStringAt(0, Font16.Height, (uint8_t*)str, LEFT_MODE);	           
+}
+
+/// \classmethod \constructor(skin_position)
+///
+/// Construct an LCD object in the given skin position.  `skin_position` can be 'X' or 'Y', and
+/// should match the position where the LCD pyskin is plugged in.
+STATIC mp_obj_t pyb_lcd_make_new(const mp_obj_type_t *type, mp_uint_t n_args, mp_uint_t n_kw, const mp_obj_t *args) {
+    // check arguments
+    //mp_arg_check_num(n_args, n_kw, 1, 1, false);
+
+	//BSP_LCD_Init();
+	LCD_LL_Init();	
+	BSP_LCD_LayerDefaultInit(0, LCD_FB_START_ADDRESS); 
+    BSP_LCD_SelectLayer(0);
+	BSP_LCD_DisplayOn();
+    BSP_LCD_Clear(LCD_COLOR_BLACK); 	
+	BSP_LCD_SetFont(&Font16);
+	BSP_LCD_SetTextColor(LCD_COLOR_WHITE);
+	BSP_LCD_SetBackColor(LCD_COLOR_BLACK);
+    //BSP_LCD_DisplayStringAt(0, Font16.Height, (uint8_t*)"DZIALAAAA!!!!", CENTER_MODE);	       
+    // get LCD position
+    //const char *lcd_id = mp_obj_str_get_str(args[0]);
+    // create lcd object
+    pyb_lcd_obj_t *lcd = m_new_obj(pyb_lcd_obj_t);
+	lcd->base.type = &pyb_lcd_type;    
+    // clear local char buffer
+    memset(lcd->char_buffer, ' ', LCD_CHAR_BUF_H * LCD_CHAR_BUF_W);
+    lcd->line = 0;
+    lcd->column = 0;
+    lcd->next_line = 0;
+
+    // clear local pixel buffer
+    memset(lcd->pix_buf, 0, LCD_PIX_BUF_BYTE_SIZE);
+    memset(lcd->pix_buf2, 0, LCD_PIX_BUF_BYTE_SIZE);
+
+    return lcd;
+}
+
+/// \method command(instr_data, buf)
+///
+/// Send an arbitrary command to the LCD.  Pass 0 for `instr_data` to send an
+/// instruction, otherwise pass 1 to send data.  `buf` is a buffer with the
+/// instructions/data to send.
+STATIC mp_obj_t pyb_lcd_command(mp_obj_t self_in, mp_obj_t instr_data_in, mp_obj_t val) {  
+    return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_3(pyb_lcd_command_obj, pyb_lcd_command);
+
+/// \method contrast(value)
+///
+/// Set the contrast of the LCD.  Valid values are between 0 and 47.
+STATIC mp_obj_t pyb_lcd_contrast(mp_obj_t self_in, mp_obj_t contrast_in) {
+   
+    return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_2(pyb_lcd_contrast_obj, pyb_lcd_contrast);
+
+/// \method light(value)
+///
+/// Turn the backlight on/off.  True or 1 turns it on, False or 0 turns it off.
+STATIC mp_obj_t pyb_lcd_light(mp_obj_t self_in, mp_obj_t value) {	
+	if (mp_obj_is_true(value)){
+	    HAL_GPIO_WritePin(LCD_BL_CTRL_GPIO_PORT, LCD_BL_CTRL_PIN, GPIO_PIN_SET);
+	}
+	else{
+		HAL_GPIO_WritePin(LCD_BL_CTRL_GPIO_PORT, LCD_BL_CTRL_PIN, GPIO_PIN_RESET);
+	}
+    return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_2(pyb_lcd_light_obj, pyb_lcd_light);
+
+/// \method write(str)
+///
+/// Write the string `str` to the screen.  It will appear immediately.
+STATIC mp_obj_t pyb_lcd_write(mp_obj_t self_in, mp_obj_t str) {
+    
+	pyb_lcd_obj_t *self = self_in;
+    mp_uint_t len;
+    const char *data = mp_obj_str_get_data(str, &len);
+    lcd_write_strn(self, data, len);
+    return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_2(pyb_lcd_write_obj, pyb_lcd_write);
+
+/// \method fill(colour)
+///
+/// Fill the screen with the given colour (0 or 1 for white or black).
+///
+/// This method writes to the hidden buffer.  Use `show()` to show the buffer.
+STATIC mp_obj_t pyb_lcd_fill(mp_obj_t self_in, mp_obj_t col_in) {
+	BSP_LCD_Clear(LCD_COLOR_BLACK);
+    /*pyb_lcd_obj_t *self = self_in;
+    int col = mp_obj_get_int(col_in);
+    if (col) {
+        col = 0xff;
+    }
+    memset(self->pix_buf, col, LCD_PIX_BUF_BYTE_SIZE);
+    memset(self->pix_buf2, col, LCD_PIX_BUF_BYTE_SIZE);*/
+    return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_2(pyb_lcd_fill_obj, pyb_lcd_fill);
+
+/// \method get(x, y)
+///
+/// Get the pixel at the position `(x, y)`.  Returns 0 or 1.
+///
+/// This method reads from the visible buffer.
+STATIC mp_obj_t pyb_lcd_get(mp_obj_t self_in, mp_obj_t x_in, mp_obj_t y_in) {
+    //pyb_lcd_obj_t *self = self_in;
+    int x = mp_obj_get_int(x_in);
+    int y = mp_obj_get_int(y_in);
+	if(BSP_LCD_ReadPixel(x, y)){
+		return mp_obj_new_int(1);
+	}	
+	return mp_obj_new_int(0);	
+	
+    /*if (0 <= x && x <= 127 && 0 <= y && y <= 31) {
+        uint byte_pos = x + 128 * ((uint)y >> 3);
+        if (self->pix_buf[byte_pos] & (1 << (y & 7))) {
+            return mp_obj_new_int(1);
+        }
+    }
+    return mp_obj_new_int(0);*/
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_3(pyb_lcd_get_obj, pyb_lcd_get);
+
+/// \method pixel(x, y, colour)
+///
+/// Set the pixel at `(x, y)` to the given colour (0 or 1).
+///
+/// This method writes to the hidden buffer.  Use `show()` to show the buffer.
+STATIC mp_obj_t pyb_lcd_pixel(mp_uint_t n_args, const mp_obj_t *args) {
+    //pyb_lcd_obj_t *self = args[0];
+    int x = mp_obj_get_int(args[1]);
+    int y = mp_obj_get_int(args[2]);    
+	BSP_LCD_DrawPixel(x, y, LCD_COLOR_WHITE);
+    return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(pyb_lcd_pixel_obj, 4, 4, pyb_lcd_pixel);
+
+/// \method text(str, x, y, colour)
+///
+/// Draw the given text to the position `(x, y)` using the given colour (0 or 1).
+///
+/// This method writes to the hidden buffer.  Use `show()` to show the buffer.
+STATIC mp_obj_t pyb_lcd_text(mp_uint_t n_args, const mp_obj_t *args) {
+// extract arguments
+    //pyb_lcd_obj_t *self = args[0];
+    mp_uint_t len;
+    const char *data = mp_obj_str_get_data(args[1], &len);
+    int x0 = mp_obj_get_int(args[2]);
+    int y0 = mp_obj_get_int(args[3]);
+	BSP_LCD_DisplayStringAt(x0, y0, (uint8_t*)data, LEFT_MODE);	
+    return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(pyb_lcd_text_obj, 5, 5, pyb_lcd_text);
+
+/// \method show()
+///
+/// Show the hidden buffer on the screen.
+STATIC mp_obj_t pyb_lcd_show(mp_obj_t self_in) {
+	
+    return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(pyb_lcd_show_obj, pyb_lcd_show);
+
+STATIC const mp_map_elem_t pyb_lcd_locals_dict_table[] = {
+    // instance methods
+    { MP_OBJ_NEW_QSTR(MP_QSTR_command), (mp_obj_t)&pyb_lcd_command_obj },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_contrast), (mp_obj_t)&pyb_lcd_contrast_obj },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_light), (mp_obj_t)&pyb_lcd_light_obj },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_write), (mp_obj_t)&pyb_lcd_write_obj },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_fill), (mp_obj_t)&pyb_lcd_fill_obj },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_get), (mp_obj_t)&pyb_lcd_get_obj },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_pixel), (mp_obj_t)&pyb_lcd_pixel_obj },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_text), (mp_obj_t)&pyb_lcd_text_obj },
+    { MP_OBJ_NEW_QSTR(MP_QSTR_show), (mp_obj_t)&pyb_lcd_show_obj },
+};
+
+STATIC MP_DEFINE_CONST_DICT(pyb_lcd_locals_dict, pyb_lcd_locals_dict_table);
+
+const mp_obj_type_t pyb_lcd_type = {
+    { &mp_type_type },
+    .name = MP_QSTR_LCD,
+    .make_new = pyb_lcd_make_new,
+    .locals_dict = (mp_obj_t)&pyb_lcd_locals_dict,
+};
+
+
+#else
 typedef struct _pyb_lcd_obj_t {
     mp_obj_base_t base;
 
@@ -535,5 +761,5 @@ const mp_obj_type_t pyb_lcd_type = {
     .make_new = pyb_lcd_make_new,
     .locals_dict = (mp_obj_t)&pyb_lcd_locals_dict,
 };
-
+#endif // STM32f7DISC
 #endif // MICROPY_HW_HAS_LCD

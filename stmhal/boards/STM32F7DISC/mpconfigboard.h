@@ -1,5 +1,9 @@
 #define STM32F7DISC
 
+#ifndef STM32F746xx
+    #define STM32F746xx
+#endif
+
 #define MICROPY_HW_BOARD_NAME       "F7DISC"
 #define MICROPY_HW_MCU_NAME         "STM32F746"
 
@@ -8,7 +12,7 @@
 #define MICROPY_HW_HAS_SDCARD       (1)
 #define MICROPY_HW_HAS_MMA7660      (0)
 #define MICROPY_HW_HAS_LIS3DSH      (0)
-#define MICROPY_HW_HAS_LCD          (0)
+#define MICROPY_HW_HAS_LCD          (1)
 #define MICROPY_HW_ENABLE_RNG       (1)
 #define MICROPY_HW_ENABLE_RTC       (1)
 #define MICROPY_HW_ENABLE_TIMER     (1)
