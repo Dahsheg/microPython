@@ -121,7 +121,7 @@ typedef struct _pyb_lcd_obj_t {
 // output it straight away (doesn't use the pixel buffer)
 
 STATIC void lcd_write_strn(pyb_lcd_obj_t *lcd, const char *str, unsigned int len) {	
-	BSP_LCD_DisplayStringAt(0, Font16.Height, (uint8_t*)str, LEFT_MODE);	           
+	BSP_LCD_DisplayStringAt(0, 0, (uint8_t*)str, LEFT_MODE);	           
 }
 
 /// \classmethod \constructor(skin_position)
