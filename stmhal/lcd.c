@@ -257,7 +257,13 @@ STATIC mp_obj_t pyb_lcd_pixel(mp_uint_t n_args, const mp_obj_t *args) {
     //pyb_lcd_obj_t *self = args[0];
     int x = mp_obj_get_int(args[1]);
     int y = mp_obj_get_int(args[2]);    
-	BSP_LCD_DrawPixel(x, y, LCD_COLOR_WHITE);
+	int p = mp_obj_get_int(args[3]);    
+	if(p){
+	    BSP_LCD_DrawPixel(x, y, LCD_COLOR_WHITE);
+    }
+	else{
+        BSP_LCD_DrawPixel(x, y, LCD_COLOR_BLACK);
+	}
     return mp_const_none;
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(pyb_lcd_pixel_obj, 4, 4, pyb_lcd_pixel);
